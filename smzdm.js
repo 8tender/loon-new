@@ -1,63 +1,49 @@
-const KEY = "smzdm_cookie";
+const KEY = "smzdm_app_checkin";
 const TITLE = "什么值得买";
 
 if (typeof $request !== "undefined") {
-  getCookie();
+  capture();
 } else {
-  checkin();
+  run();
 }
 
-function getCookie() {
-  const headers = $request.headers || {};
-  const cookie = headers["Cookie"] || headers["cookie"];
-  if (cookie && /(^|;\s*)sess=/.test(cookie)) {
-    const old = $persistentStore.read(KEY);
-    if (old !== cookie) {
-      const ok = $persistentStore.write(cookie, KEY);
-      $notification.post(TITLE, ok ? "Cookie 获取成功 ✅" : "Cookie 保存失败 ❌", "");
-    }
-  }
+function capture() {
+  const data = {
+    url: $request.url,
+    headers: $request.headers,
+    body: $request.body || "",
+  };
+  const ok = $persistentStore.write(JSON.stringify(data), KEY);
+  $notification.post(TITLE, ok ? "已捕获App签到请求 ✅" : "保存失败 ❌", "");
   $done({});
 }
 
-function checkin() {
-  const cookie = $persistentStore.read(KEY);
-  if (!cookie) {
-    $notification.post(TITLE, "未找到 Cookie ⚠️", "请先打开什么值得买 App,进入“我的”或签到页面");
+function run() {
+  const raw = $persistentStore.read(KEY);
+  if (!raw) {
+    $notification.post(TITLE, "未捕获签到请求 ⚠️", "请先在App里手动签到一次");
     return $done();
   }
 
-  const url = `https://zhiyou.smzdm.com/user/checkin/jsonp_checkin?callback=jQuery&_=${Date.now()}`;
-  const headers = {
-    "Cookie": cookie,
-    "Referer": "https://www.smzdm.com/",
-    "Accept": "*/*",
-    "User-Agent":
-      "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1",
-  };
+  const r = JSON.parse(raw);
+  const headers = Object.assign({}, r.headers);
+  ["Content-Length", "content-length", "Host", "host"].forEach(k => delete headers[k]);
 
-  $httpClient.get({ url, headers }, (err, resp, data) => {
+  $httpClient.post({ url: r.url, headers, body: r.body }, (err, resp, data) => {
+    console.log("status: " + (resp && resp.status));
+    console.log("response: " + data);
+
     if (err) {
       $notification.post(TITLE, "网络错误 ❌", String(err));
       return $done();
     }
     try {
-      const json = JSON.parse(
-        data.replace(/^[^(]*\(/, "").replace(/\)\s*;?\s*$/, "")
-      );
-      if (json.error_code === 0) {
+      const json = JSON.parse(data);
+      if (String(json.error_code) === "0") {
         const d = json.data || {};
-        const sub = `连续签到:${d.continue_checkin_days ?? d.checkin_num ?? "-"} 天`;
-        const body = `获得积分:${d.add_point ?? "-"}  经验:${d.add_exp ?? "-"}  金币:${d.add_gold ?? "-"}`;
-        $notification.post(TITLE, "签到成功 ✅", `${sub}\n${body}`);
+        $notification.post(TITLE, "签到成功 ✅", `连续签到:${d.daily_attendance_number ?? "-"} 天`);
       } else {
-        const msg = json.error_msg || JSON.stringify(json);
-        const expired = /登录|login/i.test(msg);
-        $notification.post(
-          TITLE,
-          expired ? "Cookie 可能已失效 ⚠️" : "签到失败/已签到 ⚠️",
-          msg
-        );
+        $notification.post(TITLE, "签到失败 ⚠️", json.error_msg || data.slice(0, 200));
       }
     } catch (e) {
       $notification.post(TITLE, "解析失败 ❌", String(data).slice(0, 200));
