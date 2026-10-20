@@ -1,0 +1,11 @@
+#!name = 什么值得买签到
+#!desc = 自动获取Cookie并每日签到
+#!author = 你的用户名
+#!icon = https://www.smzdm.com/favicon.ico
+
+[Script]
+http-request ^https:\/\/(user-api|api|zhiyou|www)\.smzdm\.com\/ script-path=https://github.com/8tender/loon-new/blob/main/smzdm.js, timeout=10, tag=什么值得买获取Cookie
+cron "10 0 * * *" script-path=https://github.com/8tender/loon-new/blob/main/smzdm.js, timeout=30, tag=什么值得买签到
+
+[MITM]
+hostname = user-api.smzdm.com, api.smzdm.com, zhiyou.smzdm.com, www.smzdm.com
